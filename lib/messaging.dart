@@ -1,7 +1,5 @@
 library messaging;
 
-/// A Calculator.
-class Calculator {
-  /// Returns [value] plus 1.
-  int addOne(int value) => value + 1;
-}
+export 'src/enums/message_type.dart';
+export 'src/models/message.dart';
+export 'src/widgets/message_thread.dart';
