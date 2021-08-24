@@ -1,4 +1,7 @@
+import 'package:collection/collection.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/widgets.dart';
+import 'package:intl/intl.dart';
 import 'package:messaging/src/widgets/text_message_in.dart';
 
 import '../../messaging.dart';
@@ -11,11 +14,13 @@ typedef WidgetForMessage = Widget Function(
   bool firstInSet,
   bool lastInSet,
 );
+typedef WidgetForDate = Widget Function(DateTime dateTime);
 
 class MessageThread extends StatefulWidget {
   final List<Message> messages;
   final MessageAlignment? messageAlignment;
   final WidgetForMessage? widgetForMessage;
+  final WidgetForDate? widgetForDate;
   final Object? sender;
 
   MessageThread({
@@ -23,6 +28,7 @@ class MessageThread extends StatefulWidget {
     required List<Message> messages,
     this.messageAlignment,
     this.widgetForMessage,
+    this.widgetForDate,
     this.sender,
   })  : this.messages = List.of(messages),
         super(key: key);
@@ -72,45 +78,74 @@ class _MessageThreadState extends State<MessageThread> {
 
   @override
   Widget build(BuildContext context) {
+    final groupings = this._messageDateGroupings(this.widget.messages);
+
     return LayoutBuilder(builder: (context, constraints) {
-      return ListView.builder(
+      return CustomScrollView(
         controller: this._scrollController,
-        itemCount: this.widget.messages.length,
-        itemBuilder: (context, index) {
-          final message = this.widget.messages[index];
-          final alignment = this._messageAlignment(message);
+        slivers: groupings.keys
+            .map((e) {
+              final messages = groupings[e]!;
 
-          final previousMessage =
-              index == 0 ? null : this.widget.messages[index - 1];
-          final nextMessage = index == this.widget.messages.length - 1
-              ? null
-              : this.widget.messages[index + 1];
+              return [
+                SliverToBoxAdapter(child: this._widgetForDate(e)),
+                SliverList(
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) {
+                      final message = messages[index];
+                      final alignment = this._messageAlignment(message);
 
-          final previousAlignment = previousMessage == null
-              ? null
-              : this._messageAlignment(previousMessage);
-          final nextAlignment =
-              nextMessage == null ? null : this._messageAlignment(nextMessage);
+                      final previousMessage =
+                          index == 0 ? null : messages[index - 1];
+                      final nextMessage = index == messages.length - 1
+                          ? null
+                          : messages[index + 1];
 
-          return Row(
-            mainAxisAlignment: this._mainAxisAlignmentFromAlignment(alignment),
-            children: [
-              Flexible(
-                child: ConstrainedBox(
-                  constraints: constraints.copyWith(
-                    maxWidth: constraints.maxWidth - 100,
-                  ),
-                  child: this._defaultWidgetForMessage(
-                    message,
-                    previousAlignment != alignment,
-                    nextAlignment != alignment,
+                      final previousAlignment = previousMessage == null
+                          ? null
+                          : this._messageAlignment(previousMessage);
+                      final nextAlignment = nextMessage == null
+                          ? null
+                          : this._messageAlignment(nextMessage);
+
+                      return Row(
+                        mainAxisAlignment:
+                            this._mainAxisAlignmentFromAlignment(alignment),
+                        children: [
+                          Flexible(
+                            child: ConstrainedBox(
+                              constraints: constraints.copyWith(
+                                maxWidth: constraints.maxWidth - 100,
+                              ),
+                              child: this._widgetForMessage(
+                                message,
+                                previousAlignment != alignment,
+                                nextAlignment != alignment,
+                              ),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                    childCount: messages.length,
                   ),
                 ),
-              ),
-            ],
-          );
-        },
+              ];
+            })
+            .expand((e) => e)
+            .toList(),
       );
+    });
+  }
+
+  Map<DateTime, List<Message>> _messageDateGroupings(List<Message> messages) {
+    final orderedMessages = List.of(messages)
+      ..sortBy((element) => element.timeSent);
+
+    return orderedMessages.groupListsBy((element) {
+      final localDate = element.timeSent.toLocal();
+
+      return DateTime(localDate.year, localDate.month, localDate.day);
     });
   }
 
@@ -141,6 +176,35 @@ class _MessageThreadState extends State<MessageThread> {
     } else {
       return MainAxisAlignment.center;
     }
+  }
+
+  Widget _widgetForDate(DateTime date) {
+    return this.widget.widgetForDate?.call(date) ??
+        this._defaultWidgetForDate(date);
+  }
+
+  Widget _defaultWidgetForDate(DateTime date) {
+    final now = DateTime.now();
+    final dateString =
+        DateFormat(now.year == date.year ? 'MMM dd' : 'MMM dd yyyy')
+            .format(date);
+
+    return Center(
+      child: Container(
+        margin: const EdgeInsets.all(10),
+        padding: const EdgeInsets.all(5),
+        child: Text(dateString),
+      ),
+    );
+  }
+
+  Widget _widgetForMessage(
+    Message message,
+    bool firstInSet,
+    bool lastInSet,
+  ) {
+    return this.widget.widgetForMessage?.call(message, firstInSet, lastInSet) ??
+        this._defaultWidgetForMessage(message, firstInSet, lastInSet);
   }
 
   Widget _defaultWidgetForMessage(
