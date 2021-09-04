@@ -28,7 +28,6 @@ class TextMessageIn extends StatelessWidget {
         color: Colors.grey.shade300,
       ),
       duration: const Duration(milliseconds: 200),
-      margin: const EdgeInsets.only(bottom: 5, left: 5, right: 5),
       padding: const EdgeInsets.all(10),
       child: SelectableText(
         message.message ?? '',

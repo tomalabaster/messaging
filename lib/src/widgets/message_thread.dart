@@ -2,42 +2,49 @@ import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/widgets.dart';
 import 'package:intl/intl.dart';
-import 'package:messaging/src/widgets/text_message_in.dart';
 
 import '../../messaging.dart';
 import '../models/message.dart';
+import 'text_message_in.dart';
 import 'text_message_out.dart';
 
 typedef MessageAlignment = Alignment? Function(Message message);
-typedef WidgetForMessage = Widget Function(
+typedef MessageWidgetBuilder = Widget Function(
   Message message,
   bool firstInSet,
   bool lastInSet,
 );
-typedef WidgetForDate = Widget Function(DateTime dateTime);
+typedef DateWidgetBuilder = Widget Function(DateTime dateTime);
+typedef AvatarWidgetBuilder<T> = Widget Function<T>(
+  T sender,
+  bool firstInSet,
+  bool lastInSet,
+);
 
-class MessageThread extends StatefulWidget {
+class MessageThread<T> extends StatefulWidget {
   final List<Message> messages;
   final MessageAlignment? messageAlignment;
-  final WidgetForMessage? widgetForMessage;
-  final WidgetForDate? widgetForDate;
-  final Object? sender;
+  final MessageWidgetBuilder? messageWidget;
+  final DateWidgetBuilder? dateWidget;
+  final AvatarWidgetBuilder<T>? avatarWidget;
+  final T? sender;
 
   MessageThread({
     Key? key,
     required List<Message> messages,
     this.messageAlignment,
-    this.widgetForMessage,
-    this.widgetForDate,
+    this.messageWidget,
+    this.dateWidget,
+    this.avatarWidget,
     this.sender,
   })  : this.messages = List.of(messages),
         super(key: key);
 
   @override
-  _MessageThreadState createState() => _MessageThreadState();
+  _MessageThreadState<T> createState() => _MessageThreadState<T>();
 }
 
-class _MessageThreadState extends State<MessageThread> {
+class _MessageThreadState<T> extends State<MessageThread> {
   late final ScrollController _scrollController;
 
   @override
@@ -108,23 +115,38 @@ class _MessageThreadState extends State<MessageThread> {
                           ? null
                           : this._messageAlignment(nextMessage);
 
-                      return Row(
-                        mainAxisAlignment:
-                            this._mainAxisAlignmentFromAlignment(alignment),
-                        children: [
-                          Flexible(
-                            child: ConstrainedBox(
-                              constraints: constraints.copyWith(
-                                maxWidth: constraints.maxWidth - 100,
-                              ),
-                              child: this._widgetForMessage(
-                                message,
-                                previousAlignment != alignment,
-                                nextAlignment != alignment,
+                      final firstInSet = previousAlignment != alignment;
+                      final lastInSet = nextAlignment != alignment;
+
+                      final avatar = this._widgetForAvatar(
+                        message.sender as T,
+                        firstInSet,
+                        lastInSet,
+                      );
+
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 5),
+                        child: Row(
+                          mainAxisAlignment: this
+                              ._rowMainAxisAlignmentFromAlignment(alignment),
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            if (this.widget.sender != message.sender) avatar,
+                            Flexible(
+                              child: ConstrainedBox(
+                                constraints: constraints.copyWith(
+                                  maxWidth: constraints.maxWidth - 100,
+                                ),
+                                child: this._widgetForMessage(
+                                  message,
+                                  firstInSet,
+                                  lastInSet,
+                                ),
                               ),
                             ),
-                          ),
-                        ],
+                            if (this.widget.sender == message.sender) avatar,
+                          ],
+                        ),
                       );
                     },
                     childCount: messages.length,
@@ -155,20 +177,12 @@ class _MessageThreadState extends State<MessageThread> {
   }
 
   Alignment _defaultMessageAlignment(Message message) {
-    final sender = this.widget.sender;
-
-    if (sender == null) {
-      return this.widget.messages.indexOf(message) % 6 < 3
-          ? Alignment.centerRight
-          : Alignment.centerLeft;
-    } else {
-      return message.sender == sender
-          ? Alignment.centerRight
-          : Alignment.centerLeft;
-    }
+    return message.sender == this.widget.sender
+        ? Alignment.centerRight
+        : Alignment.centerLeft;
   }
 
-  MainAxisAlignment _mainAxisAlignmentFromAlignment(Alignment alignment) {
+  MainAxisAlignment _rowMainAxisAlignmentFromAlignment(Alignment alignment) {
     if (alignment.x < 0) {
       return MainAxisAlignment.start;
     } else if (alignment.x > 0) {
@@ -179,7 +193,7 @@ class _MessageThreadState extends State<MessageThread> {
   }
 
   Widget _widgetForDate(DateTime date) {
-    return this.widget.widgetForDate?.call(date) ??
+    return this.widget.dateWidget?.call(date) ??
         this._defaultWidgetForDate(date);
   }
 
@@ -198,12 +212,34 @@ class _MessageThreadState extends State<MessageThread> {
     );
   }
 
+  Widget _widgetForAvatar(T sender, bool firstInSet, bool lastInSet) {
+    return this.widget.avatarWidget?.call(sender, firstInSet, lastInSet) ??
+        this.defaultWidgetForAvatar(sender, firstInSet, lastInSet);
+  }
+
+  Widget defaultWidgetForAvatar(T sender, bool firstInSet, bool lastInSet) {
+    if (lastInSet) {
+      final senderString = sender?.toString() ?? '';
+      final firstCharacter = senderString.isNotEmpty ? senderString[0] : '';
+
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 5),
+        child: CircleAvatar(
+          maxRadius: 15,
+          child: Text(firstCharacter),
+        ),
+      );
+    } else {
+      return const SizedBox(width: 40);
+    }
+  }
+
   Widget _widgetForMessage(
     Message message,
     bool firstInSet,
     bool lastInSet,
   ) {
-    return this.widget.widgetForMessage?.call(message, firstInSet, lastInSet) ??
+    return this.widget.messageWidget?.call(message, firstInSet, lastInSet) ??
         this._defaultWidgetForMessage(message, firstInSet, lastInSet);
   }
 
@@ -212,17 +248,15 @@ class _MessageThreadState extends State<MessageThread> {
     bool firstInSet,
     bool lastInSet,
   ) {
-    final defaultAlignment = this._messageAlignment(message);
-
     switch (message.messageType) {
       case MessageType.text:
-        return defaultAlignment.x < 0
-            ? TextMessageIn(
+        return this.widget.sender == message.sender
+            ? TextMessageOut(
                 message: message,
                 firstInSet: firstInSet,
                 lastInSet: lastInSet,
               )
-            : TextMessageOut(
+            : TextMessageIn(
                 message: message,
                 firstInSet: firstInSet,
                 lastInSet: lastInSet,
